@@ -1,0 +1,16 @@
+FROM node:22-alpine
+
+WORKDIR /app
+
+# Copy package files
+COPY package.json ./
+
+# Install dependencies
+RUN npm install
+
+# Copy source for schema
+COPY src/db/schema.ts ./src/db/schema.ts
+COPY drizzle.config.ts ./
+
+# Run migrations
+CMD ["npx", "drizzle-kit", "push"]
