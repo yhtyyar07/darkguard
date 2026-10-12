@@ -32,6 +32,11 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (pathname === "/dashboard-darkguard") {
+      setLoading(false);
+      return;
+    }
+
     const token = localStorage.getItem("darkguard_token");
     const user = localStorage.getItem("darkguard_username");
 
@@ -42,13 +47,17 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
       setUsername(user || "admin");
       setLoading(false);
     }
-  }, [router]);
+  }, [pathname, router]);
 
   const handleLogout = () => {
     localStorage.removeItem("darkguard_token");
     localStorage.removeItem("darkguard_username");
     router.push("/dashboard-darkguard");
   };
+
+  if (pathname === "/dashboard-darkguard") {
+    return children;
+  }
 
   if (loading || !isAuthenticated) {
     return null;
