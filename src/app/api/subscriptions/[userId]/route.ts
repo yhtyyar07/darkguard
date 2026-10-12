@@ -82,7 +82,8 @@ export async function GET(
 
     const headers = {
       "Content-Type": isVpnApp ? "text/plain; charset=utf-8" : "application/json",
-      "Subscription-Userinfo": `upload=0; download=0; total=0; expire=${Math.floor(user.expiryDate?.getTime() / 1000 || 0)}`,
+      "Profile-Title": `base64:${Buffer.from("Darkguard Team").toString("base64")}`,
+      "Subscription-Userinfo": `upload=0; download=0; expire=${Math.floor(user.expiryDate?.getTime() / 1000 || 0)}`,
     };
 
     if (isVpnApp) {
