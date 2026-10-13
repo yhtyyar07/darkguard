@@ -25,9 +25,15 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/dashboard-darkguard/settings" },
 ];
 
+const authStorageEvent = "darkguard-auth-change";
+
 const subscribeToStorage = (callback: () => void) => {
   window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
+  window.addEventListener(authStorageEvent, callback);
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener(authStorageEvent, callback);
+  };
 };
 
 const getStoredToken = () => localStorage.getItem("darkguard_token");
@@ -58,6 +64,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
   const handleLogout = () => {
     localStorage.removeItem("darkguard_token");
     localStorage.removeItem("darkguard_username");
+    window.dispatchEvent(new Event(authStorageEvent));
     router.push("/dashboard-darkguard");
   };
 

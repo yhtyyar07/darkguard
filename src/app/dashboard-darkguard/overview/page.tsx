@@ -20,23 +20,29 @@ export default function OverviewPage() {
     recentRefreshes: 0,
   });
   const [loading, setLoading] = useState(true);
+  const [firestoreStatus, setFirestoreStatus] = useState("checking");
 
   useEffect(() => {
     const fetchStats = async () => {
       try {
         const token = localStorage.getItem("darkguard_token");
 
-        const [usersRes, sublinksRes] = await Promise.all([
+        const [usersRes, sublinksRes, firebaseRes] = await Promise.all([
           fetch("/api/admin/users", {
             headers: { Authorization: `Bearer ${token}` },
           }),
           fetch("/api/admin/sublinks", {
             headers: { Authorization: `Bearer ${token}` },
           }),
+          fetch("/api/admin/firebase-status", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
         ]);
 
         const usersData = await usersRes.json();
         const sublinksData = await sublinksRes.json();
+        const firebaseData = await firebaseRes.json();
+        setFirestoreStatus(firebaseRes.ok ? firebaseData.status : "error");
 
         let totalServers = 0;
         let activeUsers = 0;
@@ -64,6 +70,7 @@ export default function OverviewPage() {
         });
       } catch (error) {
         console.error("Failed to fetch stats:", error);
+        setFirestoreStatus("error");
       } finally {
         setLoading(false);
       }
@@ -154,7 +161,9 @@ export default function OverviewPage() {
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
               <span className="text-slate-300">Firestore Sync</span>
-              <span className="text-green-400 text-sm font-bold">● Ready</span>
+              <span className={`text-sm font-bold ${firestoreStatus === "connected" ? "text-green-400" : "text-yellow-400"}`}>
+                ● {firestoreStatus === "connected" ? "Connected" : firestoreStatus.replace("_", " ")}
+              </span>
             </div>
             <div className="flex items-center justify-between p-3 bg-slate-700/30 rounded-lg">
               <span className="text-slate-300">API Endpoints</span>

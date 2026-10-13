@@ -64,12 +64,14 @@ ADMIN_USERNAME=admin
 ADMIN_PASSWORD=long_random_admin_password
 JWT_SECRET=at_least_32_random_characters
 CRON_SECRET=long_random_cron_secret
-NEXT_PUBLIC_FIREBASE_API_KEY=your_firebase_key
-NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
-NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=your_auth_domain
-NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_storage_bucket
+FIREBASE_SERVICE_ACCOUNT_KEY=base64_encoded_service_account_json
 PORT=3000
 ```
+For optional Firestore sync, create a service-account key in Firebase Console
+under Project Settings → Service Accounts. Keep the downloaded JSON private and
+never commit it. On the VPS, encode it as one line with `base64 -w 0
+service-account.json` and put that output in `FIREBASE_SERVICE_ACCOUNT_KEY`.
+The Firebase web API key or app ID is not a server service-account credential.
 Generate secrets with `openssl rand -hex 32`. Never commit `.env`.
 
 3. Start with Docker Compose:
@@ -325,11 +327,7 @@ Docker Compose is fully compatible with Portainer for easy management:
 - `JWT_SECRET` - JWT signing secret (minimum 32 chars)
 
 **Firebase** (optional)
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `FIREBASE_SERVICE_ACCOUNT_KEY` - Full JSON key
+- `FIREBASE_SERVICE_ACCOUNT_KEY` - Base64-encoded Firebase service-account JSON; required for server-side Firestore writes
 
 **System**
 - `CRON_SECRET` - Secret for triggering background jobs
@@ -390,8 +388,9 @@ psql $DATABASE_URL -c "SELECT 1"
 - Manually trigger refresh from dashboard
 
 ### Firebase Sync Not Working
-- Verify Firebase credentials in Settings
-- Check Firestore permissions
+- Verify Settings reports Firestore as connected
+- Set `FIREBASE_SERVICE_ACCOUNT_KEY` to the Base64-encoded service-account JSON in the server `.env`
+- Ensure the service account belongs to the intended Firebase project and can write to Firestore
 - Ensure network can reach Firebase
 - Review Firebase project quota
 

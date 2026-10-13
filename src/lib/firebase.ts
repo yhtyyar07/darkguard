@@ -1,45 +1,11 @@
-/**
- * Firebase Firestore Integration
- * Handles syncing user subscriptions and settings to Firebase
- */
+import { randomUUID } from "node:crypto";
+import { cert, getApps, initializeApp } from "firebase-admin/app";
+import { getFirestore, type Firestore } from "firebase-admin/firestore";
 
-import { initializeApp, getApps } from "firebase/app";
-import {
-  getFirestore,
-  doc,
-  setDoc,
-  getDoc,
-  collection,
-  query,
-  where,
-  getDocs,
-  updateDoc,
-  deleteDoc,
-} from "firebase/firestore";
-
-const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "",
-};
-
-// Initialize Firebase (only on server side)
-let firebaseApp: ReturnType<typeof initializeApp> | null = null;
-let firestore: ReturnType<typeof getFirestore> | null = null;
-
-export function initFirebase() {
-  if (typeof window !== "undefined") {
-    throw new Error("Firebase initialization must happen on server side only");
-  }
-
-  if (!firebaseApp && firebaseConfig.projectId) {
-    const apps = getApps();
-    firebaseApp = apps.length > 0 ? apps[0] : initializeApp(firebaseConfig);
-    firestore = getFirestore(firebaseApp);
-  }
-
-  return { firebaseApp, firestore };
+interface ServiceAccount {
+  projectId: string;
+  clientEmail: string;
+  privateKey: string;
 }
 
 export interface FirebaseUserData {
@@ -52,119 +18,174 @@ export interface FirebaseUserData {
   requestCount?: number;
 }
 
-/**
- * Sync user data to Firebase Firestore
- */
+export interface FirebaseConnectionStatus {
+  status: "not_configured" | "connected" | "error";
+  projectId: string | null;
+  message: string;
+}
+
+let firestore: Firestore | null = null;
+
+function readServiceAccount(): ServiceAccount | null {
+  const rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
+  if (!rawValue) return null;
+
+  let parsed: Record<string, unknown>;
+  try {
+    parsed = JSON.parse(rawValue);
+  } catch {
+    try {
+      parsed = JSON.parse(Buffer.from(rawValue, "base64").toString("utf8"));
+    } catch {
+      return null;
+    }
+  }
+
+  const projectId = parsed.project_id;
+  const clientEmail = parsed.client_email;
+  const privateKey = parsed.private_key;
+  if (
+    typeof projectId !== "string" ||
+    typeof clientEmail !== "string" ||
+    typeof privateKey !== "string"
+  ) {
+    return null;
+  }
+
+  return {
+    projectId,
+    clientEmail,
+    privateKey: privateKey.replace(/\\n/g, "\n"),
+  };
+}
+
+export function initFirebase(): Firestore | null {
+  if (typeof window !== "undefined") {
+    throw new Error("Firebase initialization must happen on the server side");
+  }
+  if (firestore) return firestore;
+
+  const serviceAccount = readServiceAccount();
+  if (!serviceAccount) return null;
+
+  const app =
+    getApps().find((existingApp) => existingApp.name === "darkguard-admin") ??
+    initializeApp(
+      {
+        credential: cert(serviceAccount),
+        projectId: serviceAccount.projectId,
+      },
+      "darkguard-admin"
+    );
+  firestore = getFirestore(app);
+  return firestore;
+}
+
+export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatus> {
+  const rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
+  if (!rawValue) {
+    return {
+      status: "not_configured",
+      projectId: null,
+      message: "FIREBASE_SERVICE_ACCOUNT_KEY is missing",
+    };
+  }
+
+  const serviceAccount = readServiceAccount();
+  if (!serviceAccount) {
+    return {
+      status: "error",
+      projectId: null,
+      message: "Service account JSON is invalid or incomplete",
+    };
+  }
+
+  try {
+    const db = initFirebase();
+    if (!db) throw new Error("Firebase Admin SDK could not initialize");
+
+    const probeRef = db.collection("_darkguard_health").doc(randomUUID());
+    await probeRef.set({ checkedAt: new Date().toISOString() });
+    await probeRef.delete();
+
+    return {
+      status: "connected",
+      projectId: serviceAccount.projectId,
+      message: "Firestore read/write connection verified",
+    };
+  } catch (error) {
+    console.error("Firebase connection check failed:", error);
+    return {
+      status: "error",
+      projectId: serviceAccount.projectId,
+      message: "Firestore connection or write permission failed",
+    };
+  }
+}
+
 export async function syncUserToFirebase(
   userData: FirebaseUserData
 ): Promise<string | null> {
   try {
-    const { firestore: db } = initFirebase();
-
-    if (!db || !firebaseConfig.projectId) {
-      console.warn("Firebase not configured, skipping Firestore sync");
+    const db = initFirebase();
+    if (!db) {
+      console.warn("Firebase service account is missing; skipping Firestore sync");
       return null;
     }
 
-    const docId = userData.shortUrl;
-    const userRef = doc(db, "subscriptions", docId);
-
-    await setDoc(userRef, userData, { merge: true });
-
-    return docId;
+    await db
+      .collection("subscriptions")
+      .doc(userData.shortUrl)
+      .set(userData, { merge: true });
+    return userData.shortUrl;
   } catch (error) {
     console.error("Firebase sync error:", error);
     return null;
   }
 }
 
-/**
- * Batch sync multiple users to Firebase
- */
 export async function batchSyncUsersToFirebase(
   users: FirebaseUserData[]
 ): Promise<number> {
   let synced = 0;
-
-  try {
-    const { firestore: db } = initFirebase();
-
-    if (!db || !firebaseConfig.projectId) {
-      console.warn("Firebase not configured, skipping batch sync");
-      return 0;
-    }
-
-    for (const userData of users) {
-      const docId = userData.shortUrl;
-      const userRef = doc(db, "subscriptions", docId);
-      await setDoc(userRef, userData, { merge: true });
-      synced++;
-    }
-  } catch (error) {
-    console.error("Firebase batch sync error:", error);
+  for (const userData of users) {
+    if (await syncUserToFirebase(userData)) synced++;
   }
-
   return synced;
 }
 
-/**
- * Get user data from Firebase
- */
 export async function getUserFromFirebase(
   shortUrl: string
 ): Promise<FirebaseUserData | null> {
   try {
-    const { firestore: db } = initFirebase();
+    const db = initFirebase();
+    if (!db) return null;
 
-    if (!db || !firebaseConfig.projectId) {
-      return null;
-    }
-
-    const userRef = doc(db, "subscriptions", shortUrl);
-    const snapshot = await getDoc(userRef);
-
-    if (snapshot.exists()) {
-      return snapshot.data() as FirebaseUserData;
-    }
-
-    return null;
+    const snapshot = await db.collection("subscriptions").doc(shortUrl).get();
+    return snapshot.exists ? (snapshot.data() as FirebaseUserData) : null;
   } catch (error) {
     console.error("Firebase fetch error:", error);
     return null;
   }
 }
 
-/**
- * Delete user from Firebase
- */
 export async function deleteUserFromFirebase(shortUrl: string): Promise<void> {
   try {
-    const { firestore: db } = initFirebase();
-
-    if (!db || !firebaseConfig.projectId) {
-      return;
-    }
-
-    const userRef = doc(db, "subscriptions", shortUrl);
-    await deleteDoc(userRef);
+    const db = initFirebase();
+    if (db) await db.collection("subscriptions").doc(shortUrl).delete();
   } catch (error) {
     console.error("Firebase delete error:", error);
   }
 }
 
-/**
- * Sync Firebase settings
- */
-export async function syncSettingsToFirebase(settings: Record<string, any>): Promise<void> {
+export async function syncSettingsToFirebase(
+  settings: Record<string, unknown>
+): Promise<void> {
   try {
-    const { firestore: db } = initFirebase();
-
-    if (!db || !firebaseConfig.projectId) {
-      return;
+    const db = initFirebase();
+    if (db) {
+      await db.collection("config").doc("settings").set(settings, { merge: true });
     }
-
-    const settingsRef = doc(db, "config", "settings");
-    await setDoc(settingsRef, settings, { merge: true });
   } catch (error) {
     console.error("Firebase settings sync error:", error);
   }

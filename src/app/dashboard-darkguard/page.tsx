@@ -32,6 +32,7 @@ export default function DashboardLoginPage() {
       const data = await response.json();
       localStorage.setItem("darkguard_token", data.token);
       localStorage.setItem("darkguard_username", data.username);
+      window.dispatchEvent(new Event("darkguard-auth-change"));
 
       router.push("/dashboard-darkguard/overview");
     } catch (err) {

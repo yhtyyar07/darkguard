@@ -1,9 +1,80 @@
 "use client";
 
-import { Settings as SettingsIcon } from "lucide-react";
+import { useEffect, useState } from "react";
+import { RefreshCw, Settings as SettingsIcon } from "lucide-react";
+
+interface FirebaseStatus {
+  status: "not_configured" | "connected" | "error" | "checking";
+  projectId?: string | null;
+  message?: string;
+}
 
 export default function SettingsPage() {
-  const firebaseConfigured = Boolean(process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID);
+  const [firebaseStatus, setFirebaseStatus] = useState<FirebaseStatus>({
+    status: "checking",
+    message: "Checking Firestore connection...",
+  });
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+    const checkStatus = async () => {
+      try {
+        const token = localStorage.getItem("darkguard_token");
+        const response = await fetch("/api/admin/firebase-status", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || "Status check failed");
+        if (mounted) setFirebaseStatus(data);
+      } catch {
+        if (mounted) {
+          setFirebaseStatus({
+            status: "error",
+            message: "Could not check Firestore connection",
+          });
+        }
+      }
+    };
+
+    void checkStatus();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const firebaseStatusLabel = {
+    checking: "Checking...",
+    not_configured: "Not configured",
+    connected: "Connected",
+    error: "Connection failed",
+  }[firebaseStatus.status];
+  const firebaseStatusColor =
+    firebaseStatus.status === "connected"
+      ? "text-green-400"
+      : firebaseStatus.status === "checking"
+        ? "text-slate-400"
+        : "text-yellow-400";
+
+  const syncExistingUsers = async () => {
+    setSyncing(true);
+    setSyncMessage("");
+    try {
+      const token = localStorage.getItem("darkguard_token");
+      const response = await fetch("/api/admin/firebase-sync", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Firestore sync failed");
+      setSyncMessage(`Synced ${data.synced} of ${data.total} users to Firestore.`);
+    } catch (error) {
+      setSyncMessage(error instanceof Error ? error.message : "Firestore sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
 
   return (
     <div className="space-y-8">
@@ -21,14 +92,36 @@ export default function SettingsPage() {
         <h2 className="text-lg font-bold text-slate-200 mb-4">Firebase Firestore Configuration</h2>
         <div className="flex items-center justify-between border-b border-slate-700 py-3">
           <span className="text-slate-400">Firestore sync</span>
-          <span className={firebaseConfigured ? "text-green-400" : "text-yellow-400"}>
-            {firebaseConfigured ? "Configured" : "Not configured"}
-          </span>
+          <span className={firebaseStatusColor}>{firebaseStatusLabel}</span>
         </div>
-        <p className="mt-4 text-sm text-slate-400">
-          Firebase credentials are read from the server environment. Update the
-          deployment environment and restart the app to change them.
+        <p className="mt-4 text-sm text-slate-400" role="status">
+          {firebaseStatus.message}
         </p>
+        {firebaseStatus.projectId && (
+          <p className="mt-2 text-xs text-slate-500">
+            Project: {firebaseStatus.projectId}
+          </p>
+        )}
+        {firebaseStatus.status !== "connected" && (
+          <p className="mt-3 text-sm text-slate-400">
+            Configure FIREBASE_SERVICE_ACCOUNT_KEY in the server .env, then restart the app.
+            Use the service-account JSON from Firebase Console, not the web API key or app ID.
+          </p>
+        )}
+        {firebaseStatus.status === "connected" && (
+          <div className="mt-4 flex flex-col items-start gap-3">
+            <button
+              type="button"
+              onClick={() => void syncExistingUsers()}
+              disabled={syncing}
+              className="inline-flex items-center gap-2 border border-cyan-700 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-950/40 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${syncing ? "animate-spin" : ""}`} />
+              {syncing ? "Syncing..." : "Sync existing users"}
+            </button>
+            {syncMessage && <p className="text-sm text-slate-300" role="status">{syncMessage}</p>}
+          </div>
+        )}
       </div>
 
       {/* System Information */}

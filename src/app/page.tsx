@@ -41,7 +41,7 @@ export default function HomePage() {
                 </div>
                 <div className="flex justify-between">
                   <span>├─ Firestore Sync Module</span>
-                  <span className="text-green-400">● READY</span>
+                  <span className="text-slate-400">● OPTIONAL</span>
                 </div>
                 <div className="flex justify-between">
                   <span>├─ CRON Scheduler</span>
