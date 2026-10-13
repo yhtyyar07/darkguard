@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { logs, sublinks, users as usersTable } from "@/db/schema";
 import { verifyRequestToken } from "@/lib/auth";
-import { SubscriptionParser, type ParsedServer } from "@/lib/subscription-parser";
+import {
+  normalizeServerName,
+  SubscriptionParser,
+  type ParsedServer,
+} from "@/lib/subscription-parser";
 import { syncUserToFirebase } from "@/lib/firebase";
 import { eq } from "drizzle-orm";
 
@@ -22,7 +26,7 @@ export async function GET(request: NextRequest) {
           const parsedServer = server as ParsedServer;
           return {
             index,
-            name: parsedServer.name || "Unnamed server",
+            name: normalizeServerName(parsedServer.name || "") || "Unnamed server",
             protocol: parsedServer.protocol || "unknown",
             address: parsedServer.server || "",
             port: parsedServer.port,

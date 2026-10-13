@@ -12,6 +12,21 @@ export interface ParsedServer {
   enabled?: boolean;
 }
 
+export function normalizeServerName(name: string): string {
+  let decodedName = name.trim();
+  try {
+    decodedName = decodeURIComponent(decodedName);
+  } catch {
+    // Keep malformed upstream fragments readable as-is.
+  }
+
+  return decodedName
+    .replace(/[\p{Extended_Pictographic}\p{Regional_Indicator}\uFE0F\u200D]/gu, "")
+    .replace(/[\u0000-\u001F]/g, " ")
+    .replace(/\s+/g, " ")
+    .replace(/^[\s,;|_-]+|[\s,;|_-]+$/g, "");
+}
+
 export class SubscriptionParser {
   /**
    * Detects and parses subscription format
@@ -70,7 +85,7 @@ export class SubscriptionParser {
       let name = `${protocol}-server`;
       const nameMatch = line.match(/#([^#]+)$/);
       if (nameMatch) {
-        name = nameMatch[1].trim();
+        name = normalizeServerName(nameMatch[1]) || name;
       }
 
       // Try to extract server address

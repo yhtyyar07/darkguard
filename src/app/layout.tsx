@@ -5,6 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "DarkGuard - VPN Subscription Management",
   description: "Advanced VPN subscription management and filtering panel",
+  icons: { icon: "/icon.svg" },
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
