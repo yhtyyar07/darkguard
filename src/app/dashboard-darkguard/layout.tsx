@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect, useState, useSyncExternalStore } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Menu,
@@ -12,42 +12,48 @@ import {
   LogOut,
   FileJson,
   Activity,
+  Server,
 } from "lucide-react";
 
 const navItems = [
   { icon: BarChart3, label: "Overview", path: "/dashboard-darkguard/overview" },
   { icon: Link2, label: "Sublinks", path: "/dashboard-darkguard/sublinks" },
+  { icon: Server, label: "Servers", path: "/dashboard-darkguard/servers" },
   { icon: Users, label: "Users", path: "/dashboard-darkguard/users" },
   { icon: Activity, label: "Logs", path: "/dashboard-darkguard/logs" },
   { icon: FileJson, label: "Data", path: "/dashboard-darkguard/data" },
   { icon: Settings, label: "Settings", path: "/dashboard-darkguard/settings" },
 ];
 
+const subscribeToStorage = (callback: () => void) => {
+  window.addEventListener("storage", callback);
+  return () => window.removeEventListener("storage", callback);
+};
+
+const getStoredToken = () => localStorage.getItem("darkguard_token");
+const getStoredUsername = () => localStorage.getItem("darkguard_username");
+const getServerSnapshot = () => null;
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [username, setUsername] = useState("");
-  const [loading, setLoading] = useState(true);
+  const token = useSyncExternalStore(
+    subscribeToStorage,
+    getStoredToken,
+    getServerSnapshot
+  );
+  const storedUsername = useSyncExternalStore(
+    subscribeToStorage,
+    getStoredUsername,
+    getServerSnapshot
+  );
 
   useEffect(() => {
-    if (pathname === "/dashboard-darkguard") {
-      setLoading(false);
-      return;
-    }
-
-    const token = localStorage.getItem("darkguard_token");
-    const user = localStorage.getItem("darkguard_username");
-
-    if (!token) {
+    if (pathname !== "/dashboard-darkguard" && !token) {
       router.replace("/dashboard-darkguard");
-    } else {
-      setIsAuthenticated(true);
-      setUsername(user || "admin");
-      setLoading(false);
     }
-  }, [pathname, router]);
+  }, [pathname, router, token]);
 
   const handleLogout = () => {
     localStorage.removeItem("darkguard_token");
@@ -59,7 +65,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return children;
   }
 
-  if (loading || !isAuthenticated) {
+  if (!token) {
     return null;
   }
 
@@ -116,7 +122,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
           <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
             <p className="text-xs text-slate-400">Logged in as</p>
-            <p className="text-sm font-bold text-slate-300">{username}</p>
+            <p className="text-sm font-bold text-slate-300">{storedUsername || "admin"}</p>
           </div>
           <button
             onClick={handleLogout}

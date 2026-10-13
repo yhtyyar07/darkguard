@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/db";
 import { sublinks, logs, users as usersTable } from "@/db/schema";
 import { verifyRequestToken } from "@/lib/auth";
-import { SubscriptionParser } from "@/lib/subscription-parser";
+import { SubscriptionParser, type ParsedServer } from "@/lib/subscription-parser";
 import { syncUserToFirebase } from "@/lib/firebase";
 import { eq, desc } from "drizzle-orm";
 import axios from "axios";
@@ -251,9 +251,28 @@ export async function PATCH(request: NextRequest) {
           typeof data === "string" ? data : JSON.stringify(data);
 
         // Parse servers
-        const servers = await SubscriptionParser.parseSubscription(
+        const parsedServers = await SubscriptionParser.parseSubscription(
           dataString
         );
+        const previousEnabledStates = new Map<string, boolean[]>();
+        const existingServers = Array.isArray(sublink.servers)
+          ? sublink.servers as ParsedServer[]
+          : [];
+        for (const existingServer of existingServers) {
+          const states = previousEnabledStates.get(existingServer.originalString) || [];
+          states.push(existingServer.enabled !== false);
+          previousEnabledStates.set(existingServer.originalString, states);
+        }
+        const seenLines = new Map<string, number>();
+        const servers = parsedServers.map((server) => {
+          const occurrence = seenLines.get(server.originalString) || 0;
+          seenLines.set(server.originalString, occurrence + 1);
+          return {
+            ...server,
+            enabled:
+              previousEnabledStates.get(server.originalString)?.[occurrence] ?? true,
+          };
+        });
 
         // Update sublink
         await db
