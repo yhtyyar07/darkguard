@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState, useSyncExternalStore } from "react";
+import { ReactNode, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Menu,
@@ -25,54 +25,59 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/dashboard-darkguard/settings" },
 ];
 
-const authStorageEvent = "darkguard-auth-change";
-
-const subscribeToStorage = (callback: () => void) => {
-  window.addEventListener("storage", callback);
-  window.addEventListener(authStorageEvent, callback);
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener(authStorageEvent, callback);
-  };
-};
-
-const getStoredToken = () => localStorage.getItem("darkguard_token");
-const getStoredUsername = () => localStorage.getItem("darkguard_username");
-const getServerSnapshot = () => null;
-
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const token = useSyncExternalStore(
-    subscribeToStorage,
-    getStoredToken,
-    getServerSnapshot
-  );
-  const storedUsername = useSyncExternalStore(
-    subscribeToStorage,
-    getStoredUsername,
-    getServerSnapshot
-  );
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [username, setUsername] = useState("admin");
 
   useEffect(() => {
-    if (pathname !== "/dashboard-darkguard" && !token) {
-      router.replace("/dashboard-darkguard");
-    }
-  }, [pathname, router, token]);
+    if (pathname === "/dashboard-darkguard") return;
 
-  const handleLogout = () => {
+    let mounted = true;
+    const checkSession = async () => {
+      try {
+        const response = await fetch("/api/auth/session", { cache: "no-store" });
+        const session = response.ok ? await response.json() : null;
+        if (!mounted) return;
+
+        if (session?.authenticated) {
+          setUsername(session.username || "admin");
+          setAuthState("authenticated");
+        } else {
+          setAuthState("unauthenticated");
+          router.replace("/dashboard-darkguard");
+        }
+      } catch {
+        if (mounted) {
+          setAuthState("unauthenticated");
+          router.replace("/dashboard-darkguard");
+        }
+      }
+    }
+
+    void checkSession();
+    return () => {
+      mounted = false;
+    };
+  }, [pathname, router]);
+
+  const handleLogout = async () => {
     localStorage.removeItem("darkguard_token");
     localStorage.removeItem("darkguard_username");
-    window.dispatchEvent(new Event(authStorageEvent));
-    router.push("/dashboard-darkguard");
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+    } finally {
+      router.replace("/dashboard-darkguard");
+    }
   };
 
   if (pathname === "/dashboard-darkguard") {
     return children;
   }
 
-  if (!token) {
+  if (authState !== "authenticated") {
     return null;
   }
 
@@ -129,7 +134,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
         <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-slate-800">
           <div className="mb-4 p-3 bg-slate-800/50 rounded-lg border border-slate-700/50">
             <p className="text-xs text-slate-400">Logged in as</p>
-            <p className="text-sm font-bold text-slate-300">{storedUsername || "admin"}</p>
+            <p className="text-sm font-bold text-slate-300">{username}</p>
           </div>
           <button
             onClick={handleLogout}

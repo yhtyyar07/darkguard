@@ -34,15 +34,24 @@ export async function POST(request: NextRequest) {
     }
 
     const token = generateToken(username);
+    const response = NextResponse.json({ success: true, username }, { status: 200 });
+    const forwardedProtocol = request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      .trim();
+    const secure = forwardedProtocol
+      ? forwardedProtocol === "https"
+      : request.nextUrl.protocol === "https:";
 
-    return NextResponse.json(
-      {
-        success: true,
-        token,
-        username,
-      },
-      { status: 200 }
-    );
+    response.cookies.set("darkguard_session", token, {
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24,
+    });
+
+    return response;
   } catch (error) {
     console.error("Login error:", error);
     return NextResponse.json(

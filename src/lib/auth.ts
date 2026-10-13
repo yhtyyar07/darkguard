@@ -94,7 +94,10 @@ export function extractToken(authHeader: string | null): string | null {
  */
 export function verifyRequestToken(request: Request): JWTPayload | null {
   const authHeader = request.headers.get("authorization");
-  const token = extractToken(authHeader);
+  const cookieHeader = request.headers.get("cookie") || "";
+  const cookieMatch = cookieHeader.match(/(?:^|;\s*)darkguard_session=([^;]+)/);
+  const cookieToken = cookieMatch ? decodeURIComponent(cookieMatch[1]) : null;
+  const token = cookieToken || extractToken(authHeader);
 
   if (!token) {
     return null;
