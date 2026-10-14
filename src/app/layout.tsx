@@ -3,8 +3,8 @@ import type { ReactNode } from "react";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "DarkGuard - VPN Subscription Management",
-  description: "Advanced VPN subscription management and filtering panel",
+  title: "DarkGuard - Workspace",
+  description: "Darkguard - Simply manage your subscriptions and users.",
   icons: { icon: "/icon.svg" },
 };
 

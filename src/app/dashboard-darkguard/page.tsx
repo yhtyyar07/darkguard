@@ -55,7 +55,7 @@ export default function DashboardLoginPage() {
             <div className="text-4xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400 mb-2">
               DARKGUARD
             </div>
-            <p className="text-xs text-purple-300 uppercase tracking-widest font-mono">Admin Authentication</p>
+            <p className="text-xs text-purple-300 uppercase tracking-widest font-light">For Authorized Users Only</p>
           </div>
 
           <form onSubmit={handleLogin} className="space-y-6">
@@ -94,13 +94,13 @@ export default function DashboardLoginPage() {
               className="w-full py-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-500 hover:to-blue-500 disabled:from-slate-600 disabled:to-slate-600 text-white font-bold rounded-lg transition-all flex items-center justify-center gap-2"
             >
               <Lock className="w-4 h-4" />
-              {loading ? "Authenticating..." : "Access Dashboard"}
+              {loading ? "Logging in..." : "Login"}
             </button>
           </form>
 
           <div className="mt-8 pt-8 border-t border-slate-700/50">
             <p className="text-xs text-slate-500 text-center font-mono">
-              SECURE FACILITY | Authentication Required
+               DarkGuard Control Panel
             </p>
           </div>
         </div>

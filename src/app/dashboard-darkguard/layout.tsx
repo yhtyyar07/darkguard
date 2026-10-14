@@ -1,6 +1,6 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { CSSProperties, ReactNode, useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import {
   Menu,
@@ -25,12 +25,20 @@ const navItems = [
   { icon: Settings, label: "Settings", path: "/dashboard-darkguard/settings" },
 ];
 
+const accentColors = {
+  cyan: "#58c8e0",
+  violet: "#ad91ef",
+  teal: "#58c8b4",
+  amber: "#e7ad56",
+} as const;
+
 export default function DashboardLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
   const [username, setUsername] = useState("admin");
+  const [appearance, setAppearance] = useState({ accent: "cyan", density: "comfortable" });
 
   useEffect(() => {
     if (pathname === "/dashboard-darkguard") return;
@@ -63,6 +71,33 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     };
   }, [pathname, router]);
 
+  useEffect(() => {
+    if (authState !== "authenticated") return;
+
+    let mounted = true;
+    const loadAppearance = async () => {
+      try {
+        const token = localStorage.getItem("darkguard_token");
+        const response = await fetch("/api/admin/settings", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const preferences = await response.json();
+        if (mounted) setAppearance(preferences);
+      } catch {
+        // Keep the default dashboard appearance if preferences are unavailable.
+      }
+    };
+
+    void loadAppearance();
+    window.addEventListener("dashboard-appearance-change", loadAppearance);
+    return () => {
+      mounted = false;
+      window.removeEventListener("dashboard-appearance-change", loadAppearance);
+    };
+  }, [authState]);
+
   const handleLogout = async () => {
     localStorage.removeItem("darkguard_token");
     localStorage.removeItem("darkguard_username");
@@ -81,8 +116,15 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
     return null;
   }
 
+  const accentColor = accentColors[appearance.accent as keyof typeof accentColors] || accentColors.cyan;
+  const densityClass = appearance.density === "compact" ? "p-3 lg:p-5" : "p-4 lg:p-8";
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950">
+    <div
+      className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-900 to-slate-950"
+      data-density={appearance.density}
+      style={{ "--dashboard-accent": accentColor } as CSSProperties}
+    >
       {/* Mobile menu button */}
       <div className="lg:hidden fixed top-4 left-4 z-50">
         <button
@@ -103,12 +145,12 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
           <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
             DARKGUARD
           </h1>
-          <p className="text-xs text-purple-300 uppercase tracking-widest mt-1 font-mono">
-            Admin Panel
+          <p className="mt-1 text-xs uppercase text-cyan-300">
+            Control Panel
           </p>
         </div>
 
-        <nav className="p-4 space-y-2">
+        <nav className={`p-4 ${appearance.density === "compact" ? "space-y-1" : "space-y-2"}`}>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.path;
@@ -117,11 +159,16 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
               <a
                 key={item.path}
                 href={item.path}
-                className={`flex items-center gap-3 px-4 py-2 rounded-lg transition-all ${
+                className={`flex items-center gap-3 rounded-lg px-4 transition-all ${appearance.density === "compact" ? "py-1.5" : "py-2"} ${
                   isActive
-                    ? "bg-gradient-to-r from-purple-600/50 to-blue-600/50 text-white border border-purple-500/30"
+                    ? "border text-white"
                     : "text-slate-400 hover:text-slate-300 hover:bg-slate-800/50"
                 }`}
+                style={isActive ? {
+                  color: "var(--dashboard-accent)",
+                  backgroundColor: `${accentColor}1a`,
+                  borderColor: `${accentColor}66`,
+                } : undefined}
                 onClick={() => setSidebarOpen(false)}
               >
                 <Icon className="w-5 h-5" />
@@ -148,7 +195,7 @@ export default function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* Main content */}
       <main className="lg:ml-64 p-4 lg:p-8">
-        <div className="max-w-7xl">{children}</div>
+        <div className={`max-w-7xl ${densityClass}`}>{children}</div>
       </main>
 
       {/* Mobile sidebar overlay */}

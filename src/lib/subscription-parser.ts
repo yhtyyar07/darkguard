@@ -123,7 +123,15 @@ export class SubscriptionParser {
   static toBase64(servers: ParsedServer[]): string {
     const lines = servers
       .filter((s) => s.enabled !== false)
-      .map((s) => s.originalString);
+      .map((server) => {
+        const fragmentIndex = server.originalString.lastIndexOf("#");
+        const connection =
+          fragmentIndex >= 0
+            ? server.originalString.slice(0, fragmentIndex)
+            : server.originalString;
+        const displayName = normalizeServerName(server.name) || server.protocol;
+        return `${connection}#${encodeURIComponent(displayName)}`;
+      });
     return Buffer.from(lines.join("\n")).toString("base64");
   }
 

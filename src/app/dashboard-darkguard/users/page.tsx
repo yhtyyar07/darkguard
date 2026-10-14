@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Users, Plus, Edit2, Trash2, Copy, CheckCircle, AlertCircle } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Copy, CheckCircle, AlertCircle, Icon, User } from "lucide-react";
 
 interface User {
   id: number;
@@ -210,6 +210,7 @@ export default function UsersPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400 flex items-center gap-3">
+            <User className="w-8 h-8" />
             <Users className="w-8 h-8" />
             Users Management
           </h1>

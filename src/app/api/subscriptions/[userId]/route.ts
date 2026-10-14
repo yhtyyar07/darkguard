@@ -69,6 +69,30 @@ export async function GET(
       statusCode = 410;
     }
 
+    if (statusCode === 200 && subscriptionData) {
+      const parsedServers = await SubscriptionParser.parseSubscription(subscriptionData);
+      if (parsedServers.length > 0) {
+        const normalizedData = SubscriptionParser.toBase64(parsedServers);
+        if (normalizedData !== subscriptionData) {
+          subscriptionData = normalizedData;
+          const updatedAt = new Date();
+          await db
+            .update(users)
+            .set({ base64Data: normalizedData, updatedAt })
+            .where(eq(users.id, user.id));
+          await syncUserToFirebase({
+            shortUrl: user.shortUrl!,
+            username: user.username,
+            status: user.status as "active" | "disabled" | "expired",
+            base64Data: normalizedData,
+            updatedAt: updatedAt.toISOString(),
+            expiryDate: user.expiryDate.toISOString(),
+            requestCount: user.requestCount || 0,
+          });
+        }
+      }
+    }
+
     // Update last requested timestamp if VPN app
     if (isVpnApp && user.id) {
       await db
@@ -80,9 +104,10 @@ export async function GET(
         .where(eq(users.id, user.id));
     }
 
+    const safeUsername = user.username.replace(/[\r\n\u0000-\u001f]/g, " ").trim();
     const headers = {
       "Content-Type": isVpnApp ? "text/plain; charset=utf-8" : "application/json",
-      "Profile-Title": `base64:${Buffer.from("Darkguard Team").toString("base64")}`,
+      "Profile-Title": `base64:${Buffer.from(`Darkguard Team - ${safeUsername}`, "utf8").toString("base64")}`,
       "Subscription-Userinfo": `upload=0; download=0; total=0; expire=${Math.floor(user.expiryDate?.getTime() / 1000 || 0)}`,
     };
 

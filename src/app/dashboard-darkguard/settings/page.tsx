@@ -9,6 +9,18 @@ interface FirebaseStatus {
   message?: string;
 }
 
+interface AppearancePreferences {
+  accent: "cyan" | "violet" | "teal" | "amber";
+  density: "comfortable" | "compact";
+}
+
+const accentOptions = [
+  { id: "cyan", label: "Glacier", color: "#58c8e0" },
+  { id: "violet", label: "Amethyst", color: "#ad91ef" },
+  { id: "teal", label: "Tide", color: "#58c8b4" },
+  { id: "amber", label: "Solar", color: "#e7ad56" },
+];
+
 export default function SettingsPage() {
   const [firebaseStatus, setFirebaseStatus] = useState<FirebaseStatus>({
     status: "checking",
@@ -16,25 +28,49 @@ export default function SettingsPage() {
   });
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [appearance, setAppearance] = useState<AppearancePreferences>({
+    accent: "cyan",
+    density: "comfortable",
+  });
+  const [appearanceLoading, setAppearanceLoading] = useState(true);
+  const [appearanceSaving, setAppearanceSaving] = useState(false);
+  const [appearanceMessage, setAppearanceMessage] = useState("");
 
   useEffect(() => {
     let mounted = true;
     const checkStatus = async () => {
       try {
         const token = localStorage.getItem("darkguard_token");
-        const response = await fetch("/api/admin/firebase-status", {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        const data = await response.json();
+        const [response, preferencesResponse] = await Promise.all([
+          fetch("/api/admin/firebase-status", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("/api/admin/settings", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+        ]);
+        const [data, preferences] = await Promise.all([
+          response.json(),
+          preferencesResponse.json(),
+        ]);
         if (!response.ok) throw new Error(data.error || "Status check failed");
-        if (mounted) setFirebaseStatus(data);
+        if (!preferencesResponse.ok) {
+          throw new Error(preferences.error || "Appearance settings could not be loaded");
+        }
+        if (mounted) {
+          setFirebaseStatus(data);
+          setAppearance(preferences);
+        }
       } catch {
         if (mounted) {
           setFirebaseStatus({
             status: "error",
             message: "Could not check Firestore connection",
           });
+          setAppearanceMessage("Could not load appearance preferences");
         }
+      } finally {
+        if (mounted) setAppearanceLoading(false);
       }
     };
 
@@ -56,6 +92,30 @@ export default function SettingsPage() {
       : firebaseStatus.status === "checking"
         ? "text-slate-400"
         : "text-yellow-400";
+
+  const saveAppearance = async () => {
+    setAppearanceSaving(true);
+    setAppearanceMessage("");
+    try {
+      const token = localStorage.getItem("darkguard_token");
+      const response = await fetch("/api/admin/settings", {
+        method: "PATCH",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(appearance),
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Could not save preferences");
+      window.dispatchEvent(new Event("dashboard-appearance-change"));
+      setAppearanceMessage("Appearance saved.");
+    } catch (error) {
+      setAppearanceMessage(error instanceof Error ? error.message : "Could not save preferences");
+    } finally {
+      setAppearanceSaving(false);
+    }
+  };
 
   const syncExistingUsers = async () => {
     setSyncing(true);
@@ -124,42 +184,67 @@ export default function SettingsPage() {
         )}
       </div>
 
-      {/* System Information */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-lg p-6 backdrop-blur">
-          <h2 className="text-lg font-bold text-slate-200 mb-4">System Information</h2>
-          <div className="space-y-3">
-            <div className="flex justify-between">
-              <span className="text-slate-400">Version</span>
-              <span className="text-slate-300 font-bold">1.0.0</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Database</span>
-              <span className="text-green-400 text-sm font-bold">● Connected</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Node.js</span>
-              <span className="text-slate-300 font-bold">22.23.2</span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400">Next.js</span>
-              <span className="text-slate-300 font-bold">16.2.6</span>
-            </div>
-          </div>
+      <section className="space-y-5 border-y border-slate-800 py-6">
+        <div>
+          <p className="text-xs font-medium uppercase text-cyan-300">Personalize</p>
+          <h2 className="mt-1 text-xl font-semibold text-slate-100">Appearance</h2>
         </div>
 
-        <div className="bg-gradient-to-br from-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-lg p-6 backdrop-blur">
-          <h2 className="text-lg font-bold text-slate-200 mb-4">Supported Protocols</h2>
-          <div className="space-y-2">
-            {["VLESS", "VMESS", "Hysteria2", "Shadowsocks", "Trojan"].map((protocol) => (
-              <div key={protocol} className="flex items-center gap-2 text-slate-300">
-                <span className="text-cyan-400">✓</span>
-                <span>{protocol}</span>
-              </div>
+        <fieldset disabled={appearanceLoading || appearanceSaving} className="space-y-3">
+          <legend className="mb-3 text-sm text-slate-400">Accent palette</legend>
+          <div className="flex flex-wrap gap-3">
+            {accentOptions.map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                aria-pressed={appearance.accent === option.id}
+                onClick={() => setAppearance((current) => ({ ...current, accent: option.id as AppearancePreferences["accent"] }))}
+                className={`inline-flex items-center gap-2 border px-3 py-2 text-sm transition-colors ${
+                  appearance.accent === option.id
+                    ? "border-slate-300 bg-slate-800 text-white"
+                    : "border-slate-700 text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <span className="h-3 w-3 rounded-full" style={{ backgroundColor: option.color }} />
+                {option.label}
+              </button>
             ))}
           </div>
+        </fieldset>
+
+        <fieldset disabled={appearanceLoading || appearanceSaving}>
+          <legend className="mb-3 text-sm text-slate-400">Layout density</legend>
+          <div className="inline-flex border border-slate-700 p-1">
+            {(["comfortable", "compact"] as const).map((density) => (
+              <button
+                key={density}
+                type="button"
+                aria-pressed={appearance.density === density}
+                onClick={() => setAppearance((current) => ({ ...current, density }))}
+                className={`px-4 py-2 text-sm capitalize transition-colors ${
+                  appearance.density === density
+                    ? "bg-slate-700 text-white"
+                    : "text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                {density}
+              </button>
+            ))}
+          </div>
+        </fieldset>
+
+        <div className="flex flex-wrap items-center gap-4">
+          <button
+            type="button"
+            onClick={() => void saveAppearance()}
+            disabled={appearanceLoading || appearanceSaving}
+            className="border border-cyan-700 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-950/40 disabled:opacity-50"
+          >
+            {appearanceSaving ? "Saving..." : "Save appearance"}
+          </button>
+          {appearanceMessage && <p className="text-sm text-slate-400" role="status">{appearanceMessage}</p>}
         </div>
-      </div>
+      </section>
     </div>
   );
 }
