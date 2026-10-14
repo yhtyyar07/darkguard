@@ -66,7 +66,10 @@ JWT_SECRET=at_least_32_random_characters
 CRON_SECRET=long_random_cron_secret
 FIREBASE_SERVICE_ACCOUNT_KEY=base64_encoded_service_account_json
 PORT=3000
+PUBLIC_APP_URL=https://your-domain.example
 ```
+Set `PUBLIC_APP_URL` to the public HTTPS origin (for example `https://panel.example.com`)
+so Firestore documents contain fully qualified subscription URLs.
 For optional Firestore sync, create a service-account key in Firebase Console
 under Project Settings → Service Accounts. Keep the downloaded JSON private and
 never commit it. On the VPS, encode it as one line with `base64 -w 0
@@ -332,6 +335,7 @@ Docker Compose is fully compatible with Portainer for easy management:
 **System**
 - `CRON_SECRET` - Secret for triggering background jobs
 - `PORT` - Server port (default: 3000)
+- `PUBLIC_APP_URL` - Public HTTPS origin used in copied and Firestore subscription links
 - `NODE_ENV` - production/development
 
 ### CRON Setup

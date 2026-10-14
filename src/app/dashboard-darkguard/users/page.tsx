@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Users, Plus, Edit2, Trash2, Copy, CheckCircle, AlertCircle, Icon, User } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { QRCodeSVG } from "qrcode.react";
+import { Users, Plus, Edit2, Trash2, Copy, QrCode, X, CheckCircle, AlertCircle } from "lucide-react";
 
 interface User {
   id: number;
@@ -38,13 +39,9 @@ export default function UsersPage() {
     sublinkIds: [] as number[],
   });
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null);
+  const [qrUser, setQrUser] = useState<User | null>(null);
 
-  useEffect(() => {
-    fetchUsers();
-    fetchSublinks();
-  }, []);
-
-  const fetchSublinks = async () => {
+  const fetchSublinks = useCallback(async () => {
     try {
       const token = localStorage.getItem("darkguard_token");
       const response = await fetch("/api/admin/sublinks", {
@@ -59,11 +56,12 @@ export default function UsersPage() {
         );
       }
     } catch {
-      showToast("Failed to fetch subscription sources", "error");
+      setToast({ message: "Failed to fetch subscription sources", type: "error" });
+      window.setTimeout(() => setToast(null), 3000);
     }
-  };
+  }, []);
 
-  const fetchUsers = async () => {
+  const fetchUsers = useCallback(async () => {
     try {
       const token = localStorage.getItem("darkguard_token");
       const response = await fetch("/api/admin/users", {
@@ -75,11 +73,21 @@ export default function UsersPage() {
         setUsers(data.users || []);
       }
     } catch (error) {
-      showToast("Failed to fetch users", "error");
+      console.error("Failed to fetch users:", error);
+      setToast({ message: "Failed to fetch users", type: "error" });
+      window.setTimeout(() => setToast(null), 3000);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
+
+  useEffect(() => {
+    const initialFetch = window.setTimeout(() => {
+      void fetchUsers();
+      void fetchSublinks();
+    }, 0);
+    return () => window.clearTimeout(initialFetch);
+  }, [fetchSublinks, fetchUsers]);
 
   const handleCreateUser = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -180,10 +188,16 @@ export default function UsersPage() {
     }
   };
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text).then(() => {
-      showToast("Copied to clipboard", "success");
-    });
+  const getSubscriptionUrl = (shortUrl: string) =>
+    new URL(`/api/subscriptions/${encodeURIComponent(shortUrl)}`, window.location.origin).toString();
+
+  const copySubscriptionUrl = async (shortUrl: string) => {
+    try {
+      await navigator.clipboard.writeText(getSubscriptionUrl(shortUrl));
+      showToast("Subscription link copied", "success");
+    } catch {
+      showToast("Could not copy subscription link", "error");
+    }
   };
 
   const showToast = (message: string, type: "success" | "error") => {
@@ -209,10 +223,9 @@ export default function UsersPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400 flex items-center gap-3">
-            <User className="w-8 h-8" />
-            <Users className="w-8 h-8" />
-            Users Management
+          <h1 className="flex items-center gap-3 text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-purple-400 to-blue-400">
+            <Users className="h-8 w-8 text-cyan-400" />
+            Users
           </h1>
           <p className="text-slate-400 mt-2">Manage VPN subscriptions</p>
         </div>
@@ -402,12 +415,24 @@ export default function UsersPage() {
                     </td>
                     <td className="px-6 py-4">
                       <div className="flex items-center gap-2">
-                        <code className="text-slate-300 font-mono text-sm">{user.shortUrl}</code>
+                        <code className="text-slate-300 font-mono text-sm">{user.shortUrl || "-"}</code>
                         <button
-                          onClick={() => copyToClipboard(user.shortUrl)}
+                          onClick={() => user.shortUrl && void copySubscriptionUrl(user.shortUrl)}
+                          disabled={!user.shortUrl}
+                          title="Copy subscription link"
+                          aria-label={`Copy subscription link for ${user.username}`}
                           className="p-1 hover:bg-slate-700/50 rounded transition-colors"
                         >
                           <Copy className="w-4 h-4 text-slate-400 hover:text-slate-300" />
+                        </button>
+                        <button
+                          onClick={() => setQrUser(user)}
+                          disabled={!user.shortUrl}
+                          title="Show subscription QR code"
+                          aria-label={`Show subscription QR code for ${user.username}`}
+                          className="p-1 hover:bg-slate-700/50 rounded transition-colors disabled:opacity-40"
+                        >
+                          <QrCode className="w-4 h-4 text-cyan-400" />
                         </button>
                       </div>
                     </td>
@@ -436,6 +461,60 @@ export default function UsersPage() {
           </table>
         </div>
       </div>
+
+      {qrUser?.shortUrl && (
+        <div
+          className="fixed inset-0 z-[100] grid place-items-center bg-black/75 p-4 backdrop-blur-sm"
+          onClick={() => setQrUser(null)}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="subscription-qr-title"
+            className="w-full max-w-sm border border-slate-700 bg-slate-950 p-6 shadow-2xl"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs uppercase text-cyan-300">Hiddify subscription</p>
+                <h2 id="subscription-qr-title" className="mt-1 text-xl font-semibold text-white">
+                  {qrUser.username}
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQrUser(null)}
+                aria-label="Close QR code"
+                title="Close"
+                className="grid h-9 w-9 shrink-0 place-items-center border border-slate-700 text-slate-300 hover:bg-slate-800"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="mx-auto grid w-fit place-items-center bg-white p-3">
+              <QRCodeSVG
+                value={getSubscriptionUrl(qrUser.shortUrl)}
+                size={232}
+                level="M"
+                marginSize={2}
+                bgColor="#ffffff"
+                fgColor="#07111b"
+              />
+            </div>
+            <p className="mt-4 break-all text-center text-xs text-slate-400">
+              {getSubscriptionUrl(qrUser.shortUrl)}
+            </p>
+            <button
+              type="button"
+              onClick={() => void copySubscriptionUrl(qrUser.shortUrl!)}
+              className="mt-4 inline-flex w-full items-center justify-center gap-2 border border-cyan-800 py-2 text-sm text-cyan-200 hover:bg-cyan-950/40"
+            >
+              <Copy className="h-4 w-4" />
+              Copy link
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

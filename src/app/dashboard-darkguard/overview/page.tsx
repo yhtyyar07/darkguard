@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import {
+  Activity,
   Cpu,
   Database,
   HardDrive,
@@ -35,7 +36,7 @@ interface SystemStatus {
 
 function formatBytes(bytes: number) {
   if (!bytes) return "0 B";
-  const units = ["B", "KB", "GB", "TB"];
+  const units = ["B", "KB", "MB", "GB", "TB"];
   const unit = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
   const value = bytes / 1024 ** unit;
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unit]}`;
@@ -165,7 +166,10 @@ export default function OverviewPage() {
       <header className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <p className="text-xs font-medium uppercase text-cyan-300">Operations</p>
-          <h1 className="mt-2 text-3xl font-semibold text-slate-100">Overview</h1>
+          <h1 className="mt-2 flex items-center gap-3 text-3xl font-semibold text-slate-100">
+            <Activity className="h-7 w-7 text-cyan-300" />
+            Overview
+          </h1>
           <p className="mt-2 text-sm text-slate-400">Users and live VPS resource usage</p>
         </div>
         <div className="flex items-center gap-3 text-xs text-slate-500">

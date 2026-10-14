@@ -133,10 +133,24 @@ export async function syncUserToFirebase(
       return null;
     }
 
-    await db
-      .collection("subscriptions")
-      .doc(userData.shortUrl)
-      .set(userData, { merge: true });
+    const expiresAt = Math.floor(new Date(userData.expiryDate).getTime() / 1000);
+    const safeUsername = userData.username.replace(/[\r\n\u0000-\u001f]/g, " ").trim();
+    const profileTitle = `Darkguard Team - ${safeUsername}`;
+    const subscriptionUserinfo =
+      `upload=0; download=0; total=0; expire=${Number.isFinite(expiresAt) ? expiresAt : 0}`;
+    const subscriptionPath = `/api/subscriptions/${encodeURIComponent(userData.shortUrl)}`;
+    const publicAppUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
+
+    await db.collection("subscriptions").doc(userData.shortUrl).set(
+      {
+        ...userData,
+        subscriptionUrl: publicAppUrl ? `${publicAppUrl}${subscriptionPath}` : subscriptionPath,
+        profileTitle,
+        profileTitleHeader: `base64:${Buffer.from(profileTitle, "utf8").toString("base64")}`,
+        subscriptionUserinfo,
+      },
+      { merge: true }
+    );
     return userData.shortUrl;
   } catch (error) {
     console.error("Firebase sync error:", error);
