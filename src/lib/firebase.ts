@@ -19,12 +19,37 @@ export interface FirebaseUserData {
 }
 
 export interface FirebaseConnectionStatus {
-  status: "not_configured" | "connected" | "error";
+  status: "not_configured" | "connected" | "error" | "checking";
   projectId: string | null;
   message: string;
 }
 
 let firestore: Firestore | null = null;
+let firebaseStatusCache: { status: FirebaseConnectionStatus; expiresAt: number } | null = null;
+let firebaseStatusCheck: Promise<FirebaseConnectionStatus> | null = null;
+
+const firebaseCheckTimeoutMs = 8_000;
+
+async function withFirebaseTimeout<T>(operation: Promise<T>): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      operation,
+      new Promise<never>((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error("Firestore request timed out after 8 seconds")),
+          firebaseCheckTimeoutMs
+        );
+      }),
+    ]);
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+export function getCachedFirebaseConnectionStatus(): FirebaseConnectionStatus | null {
+  return firebaseStatusCache?.status || null;
+}
 
 function readServiceAccount(): ServiceAccount | null {
   const rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
@@ -78,49 +103,88 @@ export function initFirebase(): Firestore | null {
       "darkguard-admin"
     );
   firestore = getFirestore(app);
+  firestore.settings({ preferRest: true });
   return firestore;
 }
 
-export async function checkFirebaseConnection(): Promise<FirebaseConnectionStatus> {
+export function checkFirebaseConnection(): Promise<FirebaseConnectionStatus> {
   const rawValue = process.env.FIREBASE_SERVICE_ACCOUNT_KEY?.trim();
   if (!rawValue) {
-    return {
+    const status: FirebaseConnectionStatus = {
       status: "not_configured",
       projectId: null,
       message: "FIREBASE_SERVICE_ACCOUNT_KEY is missing",
     };
+    firebaseStatusCache = { status, expiresAt: Number.POSITIVE_INFINITY };
+    return Promise.resolve(status);
   }
 
   const serviceAccount = readServiceAccount();
   if (!serviceAccount) {
-    return {
+    const status: FirebaseConnectionStatus = {
       status: "error",
       projectId: null,
       message: "Service account JSON is invalid or incomplete",
     };
+    firebaseStatusCache = { status, expiresAt: Date.now() + 5 * 60_000 };
+    return Promise.resolve(status);
   }
 
-  try {
-    const db = initFirebase();
-    if (!db) throw new Error("Firebase Admin SDK could not initialize");
-
-    const probeRef = db.collection("_darkguard_health").doc(randomUUID());
-    await probeRef.set({ checkedAt: new Date().toISOString() });
-    await probeRef.delete();
-
-    return {
-      status: "connected",
-      projectId: serviceAccount.projectId,
-      message: "Firestore read/write connection verified",
-    };
-  } catch (error) {
-    console.error("Firebase connection check failed:", error);
-    return {
-      status: "error",
-      projectId: serviceAccount.projectId,
-      message: "Firestore connection or write permission failed",
-    };
+  if (firebaseStatusCache && Date.now() < firebaseStatusCache.expiresAt) {
+    return Promise.resolve(firebaseStatusCache.status);
   }
+  if (firebaseStatusCheck) return firebaseStatusCheck;
+
+  const pendingCheck = new Promise<FirebaseConnectionStatus>((resolve) => {
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
+      resolve({
+        status: "error",
+        projectId: serviceAccount.projectId,
+        message: "Firestore check timed out after 8 seconds",
+      });
+    }, firebaseCheckTimeoutMs);
+
+    void (async () => {
+      let status: FirebaseConnectionStatus;
+      try {
+        const db = initFirebase();
+        if (!db) throw new Error("Firebase Admin SDK could not initialize");
+
+        const probeRef = db.collection("_darkguard_health").doc(randomUUID());
+        await probeRef.set({ checkedAt: new Date().toISOString() });
+        await probeRef.delete();
+        status = {
+          status: "connected",
+          projectId: serviceAccount.projectId,
+          message: "Firestore read/write connection verified",
+        };
+      } catch (error) {
+        const details = error instanceof Error ? error.message : String(error);
+        console.warn("Firebase connection check failed:", details);
+        status = {
+          status: "error",
+          projectId: serviceAccount.projectId,
+          message: "Firestore connection or write permission failed",
+        };
+      }
+
+      if (!settled) {
+        clearTimeout(timeout);
+        resolve(status);
+      }
+    })();
+  }).then((status) => {
+    const cacheDuration = status.status === "connected" ? 60_000 : 5 * 60_000;
+    firebaseStatusCache = { status, expiresAt: Date.now() + cacheDuration };
+    return status;
+  }).finally(() => {
+    firebaseStatusCheck = null;
+  });
+
+  firebaseStatusCheck = pendingCheck;
+  return pendingCheck;
 }
 
 export async function syncUserToFirebase(
@@ -141,19 +205,24 @@ export async function syncUserToFirebase(
     const subscriptionPath = `/api/subscriptions/${encodeURIComponent(userData.shortUrl)}`;
     const publicAppUrl = process.env.PUBLIC_APP_URL?.trim().replace(/\/+$/, "");
 
-    await db.collection("subscriptions").doc(userData.shortUrl).set(
-      {
-        ...userData,
-        subscriptionUrl: publicAppUrl ? `${publicAppUrl}${subscriptionPath}` : subscriptionPath,
-        profileTitle,
-        profileTitleHeader: `base64:${Buffer.from(profileTitle, "utf8").toString("base64")}`,
-        subscriptionUserinfo,
-      },
-      { merge: true }
+    await withFirebaseTimeout(
+      db.collection("subscriptions").doc(userData.shortUrl).set(
+        {
+          ...userData,
+          subscriptionUrl: publicAppUrl ? `${publicAppUrl}${subscriptionPath}` : subscriptionPath,
+          profileTitle,
+          profileTitleHeader: `base64:${Buffer.from(profileTitle, "utf8").toString("base64")}`,
+          subscriptionUserinfo,
+        },
+        { merge: true }
+      )
     );
     return userData.shortUrl;
   } catch (error) {
-    console.error("Firebase sync error:", error);
+    console.warn(
+      "Firebase sync failed:",
+      error instanceof Error ? error.message : String(error)
+    );
     return null;
   }
 }

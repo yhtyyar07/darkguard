@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { statfs } from "node:fs/promises";
 import { cpus, freemem, totalmem } from "node:os";
 import { verifyRequestToken } from "@/lib/auth";
-import { checkFirebaseConnection } from "@/lib/firebase";
+import {
+  checkFirebaseConnection,
+  getCachedFirebaseConnectionStatus,
+  type FirebaseConnectionStatus,
+} from "@/lib/firebase";
 
 function cpuSnapshot() {
   return cpus().reduce(
@@ -31,11 +35,17 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [cpuPercent, firestore, filesystem] = await Promise.all([
+    const [cpuPercent, filesystem] = await Promise.all([
       sampleCpuUsage(),
-      checkFirebaseConnection(),
       statfs("/"),
     ]);
+    const firestore: FirebaseConnectionStatus =
+      getCachedFirebaseConnectionStatus() || {
+        status: process.env.FIREBASE_SERVICE_ACCOUNT_KEY ? "checking" : "not_configured",
+        projectId: null,
+        message: "Firestore status is checked in the background",
+      };
+    void checkFirebaseConnection();
 
     const memoryTotal = totalmem();
     const memoryUsed = memoryTotal - freemem();
