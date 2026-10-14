@@ -8,6 +8,7 @@ import {
   type ParsedServer,
 } from "@/lib/subscription-parser";
 import { syncUserToFirebase } from "@/lib/firebase";
+import { syncUserToGoogleDrive } from "@/lib/google-drive";
 import { eq } from "drizzle-orm";
 
 export async function GET(request: NextRequest) {
@@ -127,15 +128,18 @@ export async function PATCH(request: NextRequest) {
     await Promise.allSettled(
       userUpdates.map(({ user, base64Data }) => {
         if (!user.shortUrl || !user.expiryDate) return Promise.resolve();
-        return syncUserToFirebase({
-          shortUrl: user.shortUrl,
-          username: user.username,
-          status: user.status as "active" | "disabled" | "expired",
-          base64Data,
-          updatedAt: updatedAt.toISOString(),
-          expiryDate: user.expiryDate.toISOString(),
-          requestCount: user.requestCount || 0,
-        });
+        return Promise.all([
+          syncUserToFirebase({
+            shortUrl: user.shortUrl,
+            username: user.username,
+            status: user.status as "active" | "disabled" | "expired",
+            base64Data,
+            updatedAt: updatedAt.toISOString(),
+            expiryDate: user.expiryDate.toISOString(),
+            requestCount: user.requestCount || 0,
+          }),
+          syncUserToGoogleDrive({ ...user, base64Data }),
+        ]);
       })
     );
 

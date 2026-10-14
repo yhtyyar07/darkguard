@@ -67,6 +67,9 @@ CRON_SECRET=long_random_cron_secret
 FIREBASE_SERVICE_ACCOUNT_KEY=base64_encoded_service_account_json
 PORT=3000
 PUBLIC_APP_URL=https://your-domain.example
+GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY=base64_encoded_drive_service_account_json
+GOOGLE_DRIVE_FOLDER_ID=shared_parent_folder_id
+GOOGLE_DRIVE_API_KEY=
 ```
 Set `PUBLIC_APP_URL` to the public HTTPS origin (for example `https://panel.example.com`)
 so Firestore documents contain fully qualified subscription URLs.
@@ -75,6 +78,11 @@ under Project Settings → Service Accounts. Keep the downloaded JSON private an
 never commit it. On the VPS, encode it as one line with `base64 -w 0
 service-account.json` and put that output in `FIREBASE_SERVICE_ACCOUNT_KEY`.
 The Firebase web API key or app ID is not a server service-account credential.
+For Google Drive mirrors, enable the Google Drive API, create a parent folder, and
+share that folder as Editor with the Drive service-account email. Encode that
+service-account JSON with `base64 -w 0 drive-service-account.json`; configure its
+output and the parent folder ID above. `GOOGLE_DRIVE_API_KEY` is optional; when
+set, it is embedded in public download links, so restrict it to the Drive API.
 Generate secrets with `openssl rand -hex 32`. Never commit `.env`.
 
 3. Start with Docker Compose:
@@ -331,6 +339,11 @@ Docker Compose is fully compatible with Portainer for easy management:
 
 **Firebase** (optional)
 - `FIREBASE_SERVICE_ACCOUNT_KEY` - Base64-encoded Firebase service-account JSON; required for server-side Firestore writes
+
+**Google Drive** (optional)
+- `GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY` - Base64-encoded Drive service-account JSON
+- `GOOGLE_DRIVE_FOLDER_ID` - Existing parent folder shared with the service account as Editor
+- `GOOGLE_DRIVE_API_KEY` - Optional; produces a `www.googleapis.com/drive/v3/files/...` download URL
 
 **System**
 - `CRON_SECRET` - Secret for triggering background jobs

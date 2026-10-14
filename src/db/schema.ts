@@ -48,6 +48,9 @@ export const users = pgTable(
     sublinkIds: jsonb("sublink_ids").default([]), // Array of associated sublink IDs
     shortUrl: varchar("short_url", { length: 10 }).unique(), // 6-char unique code (e.g., df-ah-hy)
     base64Data: text("base64_data"), // Latest generated base64 subscription data
+    googleDriveFolderId: varchar("google_drive_folder_id", { length: 255 }),
+    googleDriveFileId: varchar("google_drive_file_id", { length: 255 }),
+    googleDriveUrl: text("google_drive_url"),
     lastRequested: timestamp("last_requested"),
     requestCount: integer("request_count").default(0),
     notes: text("notes"),

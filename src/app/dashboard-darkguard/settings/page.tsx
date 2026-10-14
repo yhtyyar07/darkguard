@@ -9,6 +9,12 @@ interface FirebaseStatus {
   message?: string;
 }
 
+interface GoogleDriveStatus {
+  status: "not_configured" | "connected" | "error";
+  folderId: string | null;
+  message: string;
+}
+
 interface AppearancePreferences {
   accent: "cyan" | "violet" | "teal" | "amber";
   density: "comfortable" | "compact";
@@ -26,8 +32,15 @@ export default function SettingsPage() {
     status: "checking",
     message: "Checking Firestore connection...",
   });
+  const [googleDriveStatus, setGoogleDriveStatus] = useState<GoogleDriveStatus>({
+    status: "not_configured",
+    folderId: null,
+    message: "Checking Google Drive connection...",
+  });
   const [syncing, setSyncing] = useState(false);
   const [syncMessage, setSyncMessage] = useState("");
+  const [driveSyncing, setDriveSyncing] = useState(false);
+  const [driveSyncMessage, setDriveSyncMessage] = useState("");
   const [appearance, setAppearance] = useState<AppearancePreferences>({
     accent: "cyan",
     density: "comfortable",
@@ -41,17 +54,21 @@ export default function SettingsPage() {
     const checkStatus = async () => {
       try {
         const token = localStorage.getItem("darkguard_token");
-        const [response, preferencesResponse] = await Promise.all([
+        const [response, preferencesResponse, driveResponse] = await Promise.all([
           fetch("/api/admin/firebase-status", {
             headers: { Authorization: `Bearer ${token}` },
           }),
           fetch("/api/admin/settings", {
             headers: { Authorization: `Bearer ${token}` },
           }),
+          fetch("/api/admin/google-drive", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
         ]);
-        const [data, preferences] = await Promise.all([
+        const [data, preferences, driveData] = await Promise.all([
           response.json(),
           preferencesResponse.json(),
+          driveResponse.json(),
         ]);
         if (!response.ok) throw new Error(data.error || "Status check failed");
         if (!preferencesResponse.ok) {
@@ -60,6 +77,11 @@ export default function SettingsPage() {
         if (mounted) {
           setFirebaseStatus(data);
           setAppearance(preferences);
+          setGoogleDriveStatus(
+            driveResponse.ok
+              ? driveData
+              : { status: "error", folderId: null, message: driveData.error || "Could not check Google Drive" }
+          );
         }
       } catch {
         if (mounted) {
@@ -136,6 +158,25 @@ export default function SettingsPage() {
     }
   };
 
+  const syncExistingUsersToDrive = async () => {
+    setDriveSyncing(true);
+    setDriveSyncMessage("");
+    try {
+      const token = localStorage.getItem("darkguard_token");
+      const response = await fetch("/api/admin/google-drive", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.error || "Google Drive sync failed");
+      setDriveSyncMessage(`Synced ${data.synced} of ${data.total} users to Google Drive.`);
+    } catch (error) {
+      setDriveSyncMessage(error instanceof Error ? error.message : "Google Drive sync failed");
+    } finally {
+      setDriveSyncing(false);
+    }
+  };
+
   return (
     <div className="space-y-8">
       {/* Header */}
@@ -183,6 +224,40 @@ export default function SettingsPage() {
           </div>
         )}
       </div>
+
+      <section className="border-y border-slate-800 py-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-medium uppercase text-cyan-300">Subscription mirror</p>
+            <h2 className="mt-1 text-xl font-semibold text-slate-100">Google Drive</h2>
+          </div>
+          <span className={`text-sm font-semibold ${googleDriveStatus.status === "connected" ? "text-emerald-300" : googleDriveStatus.status === "error" ? "text-red-300" : "text-amber-300"}`}>
+            {googleDriveStatus.status.replaceAll("_", " ")}
+          </span>
+        </div>
+        <p className="mt-3 text-sm text-slate-400" role="status">{googleDriveStatus.message}</p>
+        <p className="mt-2 text-xs text-slate-500">
+          Drive mirrors the Base64 server list. For Hiddify profile title and expiry headers, use the DarkGuard subscription URL; Google Drive downloads cannot attach those custom HTTP headers.
+        </p>
+        {googleDriveStatus.status !== "connected" ? (
+          <p className="mt-2 text-xs text-slate-500">
+            Configure GOOGLE_DRIVE_SERVICE_ACCOUNT_KEY and GOOGLE_DRIVE_FOLDER_ID. Share the parent Drive folder with the service account as Editor.
+          </p>
+        ) : (
+          <div className="mt-4 flex flex-wrap items-center gap-4">
+            <button
+              type="button"
+              onClick={() => void syncExistingUsersToDrive()}
+              disabled={driveSyncing}
+              className="inline-flex items-center gap-2 border border-cyan-700 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-950/40 disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${driveSyncing ? "animate-spin" : ""}`} />
+              {driveSyncing ? "Syncing..." : "Sync existing users to Drive"}
+            </button>
+            {driveSyncMessage && <p className="text-sm text-slate-400" role="status">{driveSyncMessage}</p>}
+          </div>
+        )}
+      </section>
 
       <section className="space-y-5 border-y border-slate-800 py-6">
         <div>

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { verifyRequestToken } from "@/lib/auth";
 import { SubscriptionParser } from "@/lib/subscription-parser";
 import { syncUserToFirebase } from "@/lib/firebase";
+import { syncUserToGoogleDrive } from "@/lib/google-drive";
 
 /**
  * Get user subscription data
@@ -89,6 +90,7 @@ export async function GET(
             expiryDate: user.expiryDate.toISOString(),
             requestCount: user.requestCount || 0,
           });
+          await syncUserToGoogleDrive({ ...user, base64Data: normalizedData });
         }
       }
     }
@@ -241,6 +243,7 @@ export async function PUT(
         requestCount: result[0].requestCount || 0,
       });
     }
+    await syncUserToGoogleDrive(result[0]);
 
     return NextResponse.json({
       success: true,
@@ -310,6 +313,7 @@ export async function DELETE(
         requestCount: result[0].requestCount || 0,
       });
     }
+    await syncUserToGoogleDrive(result[0]);
 
     return NextResponse.json({
       success: true,

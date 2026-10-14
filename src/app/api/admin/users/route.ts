@@ -7,6 +7,7 @@ import { syncUserToFirebase } from "@/lib/firebase";
 import { eq, desc } from "drizzle-orm";
 import { sublinks } from "@/db/schema";
 import { SubscriptionParser } from "@/lib/subscription-parser";
+import { syncUserToGoogleDrive } from "@/lib/google-drive";
 
 /**
  * Get all users (admin only)
@@ -131,11 +132,12 @@ export async function POST(request: NextRequest) {
       updatedAt: newUser.updatedAt!.toISOString(),
       expiryDate: newUser.expiryDate!.toISOString(),
     });
+    const googleDriveUrl = await syncUserToGoogleDrive(newUser);
 
     return NextResponse.json(
       {
         success: true,
-        user: newUser,
+        user: { ...newUser, googleDriveUrl },
       },
       { status: 201 }
     );

@@ -10,6 +10,7 @@ interface User {
   status: "active" | "disabled" | "expired";
   expiryDate: string;
   shortUrl: string;
+  googleDriveUrl: string | null;
   requestCount: number;
   lastRequested: string | null;
   createdAt: string;
@@ -200,6 +201,15 @@ export default function UsersPage() {
     }
   };
 
+  const copyGoogleDriveUrl = async (url: string) => {
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast("Google Drive link copied", "success");
+    } catch {
+      showToast("Could not copy Google Drive link", "error");
+    }
+  };
+
   const showToast = (message: string, type: "success" | "error") => {
     setToast({ message, type });
     setTimeout(() => setToast(null), 3000);
@@ -386,6 +396,7 @@ export default function UsersPage() {
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Username</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Status</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Short URL</th>
+                <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Google Drive</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Expiry</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Requests</th>
                 <th className="px-6 py-3 text-left text-xs font-bold text-slate-300 uppercase">Actions</th>
@@ -394,13 +405,13 @@ export default function UsersPage() {
             <tbody className="divide-y divide-slate-700/50">
               {loading ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-4 text-center text-slate-400">
                     Loading...
                   </td>
                 </tr>
               ) : users.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="px-6 py-4 text-center text-slate-400">
+                  <td colSpan={7} className="px-6 py-4 text-center text-slate-400">
                     No users found
                   </td>
                 </tr>
@@ -435,6 +446,32 @@ export default function UsersPage() {
                           <QrCode className="w-4 h-4 text-cyan-400" />
                         </button>
                       </div>
+                    </td>
+                    <td className="px-6 py-4">
+                      {user.googleDriveUrl ? (
+                        <div className="flex max-w-64 items-center gap-2">
+                          <a
+                            href={user.googleDriveUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            title={user.googleDriveUrl}
+                            className="min-w-0 truncate font-mono text-xs text-cyan-300 hover:underline"
+                          >
+                            {user.googleDriveUrl}
+                          </a>
+                          <button
+                            type="button"
+                            onClick={() => void copyGoogleDriveUrl(user.googleDriveUrl!)}
+                            title="Copy Google Drive link"
+                            aria-label={`Copy Google Drive link for ${user.username}`}
+                            className="shrink-0 p-1 text-slate-400 hover:text-cyan-300"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-500">Not synced</span>
+                      )}
                     </td>
                     <td className="px-6 py-4 text-slate-400 text-sm">
                       {new Date(user.expiryDate).toLocaleDateString()}
